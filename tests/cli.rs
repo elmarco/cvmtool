@@ -11,13 +11,6 @@ mod verify {
         let certs_dir = std::path::Path::new("tests/fixtures/sev-certs");
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
 
-        if !certs_dir.exists() || !report_path.exists() {
-            eprintln!(
-                "Skipping test: tests/fixtures/sev-certs/ or tests/fixtures/sev.report not found"
-            );
-            return;
-        }
-
         cvmtool()
             .args(["-p", "sev_guest", "verify"])
             .arg(report_path)
@@ -42,13 +35,6 @@ mod verify {
     fn sev_with_fake_certs() {
         let certs_dir = std::path::Path::new("tests/fixtures/sev-fake-certs");
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
-
-        if !certs_dir.exists() || !report_path.exists() {
-            eprintln!(
-                "Skipping test: tests/fixtures/sev-fakecerts/ or tests/fixtures/sev.report not found"
-            );
-            return;
-        }
 
         cvmtool()
             .args(["-p", "sev_guest", "verify"])
@@ -124,10 +110,6 @@ mod verify {
     #[test]
     fn sev_missing_certs_fails() {
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
-        if !report_path.exists() {
-            eprintln!("Skipping test: tests/fixtures/sev.report not found");
-            return;
-        }
 
         let temp = TempDir::new().unwrap();
         let certs_dir = temp.path().join("certs");
@@ -221,6 +203,136 @@ mod verify {
             .assert()
             .failure()
             .stderr(predicate::str::contains("Failed to read"));
+    }
+
+    #[test]
+    fn tdx_wrong_measurement_fails() {
+        let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
+        // 48 bytes of zeros - almost certainly won't match real MRTD
+        let wrong_measurement = "0".repeat(96);
+
+        cvmtool()
+            .args(["-p", "tdx_guest", "verify"])
+            .arg(quote_path)
+            .args(["--expected-measurement", &wrong_measurement])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("MRTD mismatch"));
+    }
+
+    #[test]
+    fn tdx_wrong_nonce_fails() {
+        let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
+        // Use a nonce that won't match
+        let wrong_nonce = "deadbeef";
+
+        cvmtool()
+            .args(["-p", "tdx_guest", "verify"])
+            .arg(quote_path)
+            .args(["--expected-nonce", wrong_nonce])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Report data (nonce) mismatch"));
+    }
+
+    #[test]
+    fn tdx_require_no_debug_passes() {
+        let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
+
+        cvmtool()
+            .args(["-p", "tdx_guest", "verify"])
+            .arg(quote_path)
+            .args(["--require-no-debug"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("TD debug mode is disabled"));
+    }
+
+    #[test]
+    fn sev_wrong_measurement_fails() {
+        let certs_dir = std::path::Path::new("tests/fixtures/sev-certs");
+        let report_path = std::path::Path::new("tests/fixtures/sev.report");
+
+        // 48 bytes of zeros - won't match real measurement
+        let wrong_measurement = "0".repeat(96);
+
+        cvmtool()
+            .args(["-p", "sev_guest", "verify"])
+            .arg(report_path)
+            .args(["--certs-dir"])
+            .arg(certs_dir)
+            .args(["--expected-measurement", &wrong_measurement])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Measurement mismatch"));
+    }
+
+    #[test]
+    fn sev_require_no_debug_passes() {
+        let certs_dir = std::path::Path::new("tests/fixtures/sev-certs");
+        let report_path = std::path::Path::new("tests/fixtures/sev.report");
+
+        cvmtool()
+            .args(["-p", "sev_guest", "verify"])
+            .arg(report_path)
+            .args(["--certs-dir"])
+            .arg(certs_dir)
+            .args(["--require-no-debug"])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Debug mode is disabled"));
+    }
+
+    #[test]
+    fn sev_min_tcb_too_high_fails() {
+        let certs_dir = std::path::Path::new("tests/fixtures/sev-certs");
+        let report_path = std::path::Path::new("tests/fixtures/sev.report");
+
+        // Set minimum TCB versions very high - should fail
+        cvmtool()
+            .args(["-p", "sev_guest", "verify"])
+            .arg(report_path)
+            .args(["--certs-dir"])
+            .arg(certs_dir)
+            .args(["--min-tcb", "255:255:255:255"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("is below minimum"));
+    }
+
+    #[test]
+    fn sev_correct_measurement_passes() {
+        let certs_dir = std::path::Path::new("tests/fixtures/sev-certs");
+        let report_path = std::path::Path::new("tests/fixtures/sev.report");
+
+        let measurement = "80422fe2dc2aa605d20ae4d74eaca02930281d59646a819cf8f11d9842d1c48f48df72439bcdf389cbe71ffa754ab3dc";
+
+        cvmtool()
+            .args(["-p", "sev_guest", "verify"])
+            .arg(report_path)
+            .args(["--certs-dir"])
+            .arg(certs_dir)
+            .args(["--expected-measurement", measurement])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains(
+                "Measurement matches expected value",
+            ));
+    }
+
+    #[test]
+    fn tdx_correct_measurement_passes() {
+        let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
+
+        let mrtd = "d2567292906f19471ed375e2c1f8eb836a719ceb3a8756b9ad21db01552ff0f9ac8e194dccb65a3dbda4c7ee2c4ded9f";
+
+        cvmtool()
+            .args(["-p", "tdx_guest", "verify"])
+            .arg(quote_path)
+            .args(["--expected-measurement", mrtd])
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("MRTD matches expected value"));
     }
 }
 

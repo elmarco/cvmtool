@@ -1,3 +1,4 @@
+use crate::VerifyOptions;
 use anyhow::{Context, Result};
 use asn1_rs::{Oid, oid};
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
@@ -34,7 +35,11 @@ pub fn parse_report(bytes: &[u8]) -> Result<AttestationReport> {
         .map_err(|e| anyhow::anyhow!("Failed to parse SEV report: {:?}", e))
 }
 
-pub fn verify_report(report: &AttestationReport, certs_dir: &Path) -> Result<()> {
+pub fn verify_report(
+    report: &AttestationReport,
+    certs_dir: &Path,
+    opts: &VerifyOptions,
+) -> Result<()> {
     let ark_path = find_cert_in_dir(certs_dir, "ark")?;
     let ask_path = find_cert_in_dir(certs_dir, "ask")?;
     let vcek_path = find_cert_in_dir(certs_dir, "vcek")?;
@@ -83,6 +88,8 @@ pub fn verify_report(report: &AttestationReport, certs_dir: &Path) -> Result<()>
     println!("VCEK signed the attestation report");
 
     verify_tcb(&vcek, report)?;
+
+    verify_attestation_content(report, opts)?;
 
     Ok(())
 }
@@ -203,6 +210,137 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
             return Err(anyhow::anyhow!("Chip ID mismatch between report and VCEK"));
         }
         println!("Chip ID matches");
+    }
+
+    Ok(())
+}
+
+fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) -> Result<()> {
+    if let Some(expected_hex) = &opts.expected_measurement {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_measurement")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected measurement must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if report.measurement != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "Measurement mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(report.measurement)
+            ));
+        }
+        println!("Measurement matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_nonce {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_nonce")?;
+        let expected_len = expected.len().min(64);
+        let mut expected_padded = [0u8; 64];
+        expected_padded[..expected_len].copy_from_slice(&expected[..expected_len]);
+
+        if report.report_data != expected_padded {
+            return Err(anyhow::anyhow!(
+                "Report data (nonce) mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(expected_padded),
+                hex::encode(report.report_data)
+            ));
+        }
+        println!("Report data contains expected nonce");
+    }
+
+    if let Some(expected_hex) = &opts.expected_host_data {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_host_data")?;
+        if expected.len() != 32 {
+            return Err(anyhow::anyhow!(
+                "Expected host_data must be 32 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if report.host_data != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "Host data mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(report.host_data)
+            ));
+        }
+        println!("Host data matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_id_key_digest {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_id_key_digest")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected id_key_digest must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if report.id_key_digest != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "ID key digest mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(report.id_key_digest)
+            ));
+        }
+        println!("ID key digest matches expected value");
+    }
+
+    if opts.require_no_debug && report.policy.debug_allowed() {
+        return Err(anyhow::anyhow!(
+            "Debug mode is enabled but --require-no-debug was specified"
+        ));
+    }
+    if opts.require_no_debug {
+        println!("Debug mode is disabled");
+    }
+
+    if opts.require_no_migration && report.policy.migrate_ma_allowed() {
+        return Err(anyhow::anyhow!(
+            "Migration is allowed but --require-no-migration was specified"
+        ));
+    }
+    if opts.require_no_migration {
+        println!("Migration is disabled");
+    }
+
+    if let Some((min_bootloader, min_tee, min_snp, min_microcode)) = opts.min_tcb {
+        if report.reported_tcb.bootloader < min_bootloader {
+            return Err(anyhow::anyhow!(
+                "TCB bootloader version {} is below minimum {}",
+                report.reported_tcb.bootloader,
+                min_bootloader
+            ));
+        }
+        if report.reported_tcb.tee < min_tee {
+            return Err(anyhow::anyhow!(
+                "TCB TEE version {} is below minimum {}",
+                report.reported_tcb.tee,
+                min_tee
+            ));
+        }
+        if report.reported_tcb.snp < min_snp {
+            return Err(anyhow::anyhow!(
+                "TCB SNP version {} is below minimum {}",
+                report.reported_tcb.snp,
+                min_snp
+            ));
+        }
+        if report.reported_tcb.microcode < min_microcode {
+            return Err(anyhow::anyhow!(
+                "TCB microcode version {} is below minimum {}",
+                report.reported_tcb.microcode,
+                min_microcode
+            ));
+        }
+        println!(
+            "TCB versions meet minimum requirements ({}:{}:{}:{})",
+            min_bootloader, min_tee, min_snp, min_microcode
+        );
     }
 
     Ok(())

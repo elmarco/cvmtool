@@ -24,8 +24,8 @@ enum Commands {
     /// Generate a report/quote
     Report {
         /// Nonce (hex string). Will be padded with zeros or truncated to 64 bytes.
-        #[arg(long, value_parser = parse_hex)]
-        nonce: Option<Vec<u8>>,
+        #[arg(long)]
+        nonce: Option<String>,
 
         /// Output file path. If not specified, the report is printed to stdout.
         #[arg(short, long)]
@@ -37,9 +37,53 @@ enum Commands {
         #[arg(value_name = "FILE")]
         path: PathBuf,
 
-        /// Path to directory containing certificate chain (ark.pem, ask.pem, vcek.pem)
+        /// Path to directory containing certificate chain
         #[arg(short, long, value_name = "DIR")]
         certs_dir: Option<PathBuf>,
+
+        /// Expected nonce in report_data (hex string, up to 64 bytes)
+        #[arg(long)]
+        expected_nonce: Option<String>,
+
+        /// Expected launch measurement (hex string, 48 bytes for SEV/TDX MRTD)
+        #[arg(long)]
+        expected_measurement: Option<String>,
+
+        /// Expected host data (hex string, 32 bytes, SEV only)
+        #[arg(long)]
+        expected_host_data: Option<String>,
+
+        /// Expected ID key digest (hex string, 48 bytes, SEV only)
+        #[arg(long)]
+        expected_id_key_digest: Option<String>,
+
+        /// Expected RTMR0 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        expected_rtmr0: Option<String>,
+
+        /// Expected RTMR1 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        expected_rtmr1: Option<String>,
+
+        /// Expected RTMR2 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        expected_rtmr2: Option<String>,
+
+        /// Expected RTMR3 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        expected_rtmr3: Option<String>,
+
+        /// Require debug mode to be disabled
+        #[arg(long)]
+        require_no_debug: bool,
+
+        /// Require migration to be disabled (SEV only)
+        #[arg(long)]
+        require_no_migration: bool,
+
+        /// Minimum TCB versions as bootloader:tee:snp:microcode (e.g., "3:0:8:209", SEV only)
+        #[arg(long, value_parser = parse_min_tcb)]
+        min_tcb: Option<(u8, u8, u8, u8)>,
     },
     /// Fetch PCK certificate from Intel PCS (for TDX hosts)
     FetchPck {
@@ -47,6 +91,30 @@ enum Commands {
         #[arg(short, long, default_value = ".")]
         output: PathBuf,
     },
+}
+
+/// Options for attestation verification beyond cryptographic checks
+#[derive(Debug, Default, Clone)]
+pub struct VerifyOptions {
+    /// Expected nonce in report_data (hex string, up to 64 bytes)
+    pub expected_nonce: Option<String>,
+    /// Expected launch measurement (hex string, SEV: 48 bytes, TDX MRTD: 48 bytes)
+    pub expected_measurement: Option<String>,
+    /// Expected host data (hex string, SEV only, 32 bytes)
+    pub expected_host_data: Option<String>,
+    /// Expected ID key digest (hex string, SEV only, 48 bytes)
+    pub expected_id_key_digest: Option<String>,
+    /// Expected RTMR values (hex string, TDX only, 48 bytes each)
+    pub expected_rtmr0: Option<String>,
+    pub expected_rtmr1: Option<String>,
+    pub expected_rtmr2: Option<String>,
+    pub expected_rtmr3: Option<String>,
+    /// Require debug mode to be disabled
+    pub require_no_debug: bool,
+    /// Require migration to be disabled (SEV only)
+    pub require_no_migration: bool,
+    /// Minimum TCB versions (SEV only): (bootloader, tee, snp, microcode)
+    pub min_tcb: Option<(u8, u8, u8, u8)>,
 }
 
 fn main() -> Result<()> {
@@ -57,6 +125,7 @@ fn main() -> Result<()> {
         Commands::Report { nonce, output } => {
             let mut input = [0u8; 64];
             if let Some(n) = nonce {
+                let n = hex::decode(&n).context("Invalid hex string for nonce")?;
                 let len = n.len().min(64);
                 input[..len].copy_from_slice(&n[..len]);
             }
@@ -81,26 +150,54 @@ fn main() -> Result<()> {
                     .context("Failed to write report to stdout")?;
             }
         }
-        Commands::Verify { path, certs_dir } => {
+        Commands::Verify {
+            path,
+            certs_dir,
+            expected_nonce,
+            expected_measurement,
+            expected_host_data,
+            expected_id_key_digest,
+            expected_rtmr0,
+            expected_rtmr1,
+            expected_rtmr2,
+            expected_rtmr3,
+            require_no_debug,
+            require_no_migration,
+            min_tcb,
+        } => {
             let report_bytes = fs::read(&path)
                 .context(format!("Failed to read report file {}", path.display()))?;
 
             let provider =
                 provider.ok_or_else(|| anyhow::anyhow!("The provider must be specified"))?;
 
+            let opts = VerifyOptions {
+                expected_nonce,
+                expected_measurement,
+                expected_host_data,
+                expected_id_key_digest,
+                expected_rtmr0,
+                expected_rtmr1,
+                expected_rtmr2,
+                expected_rtmr3,
+                require_no_debug,
+                require_no_migration,
+                min_tcb,
+            };
+
             match provider.as_str() {
                 "sev_guest" => {
                     let report = sev::parse_report(&report_bytes)?;
                     println!("{:#?}", report);
                     if let Some(certs_dir) = certs_dir {
-                        sev::verify_report(&report, &certs_dir)?;
+                        sev::verify_report(&report, &certs_dir, &opts)?;
                         println!("Verification successful!");
                     }
                 }
                 "tdx_guest" => {
                     let quote = tdx::parse_quote(&report_bytes)?;
                     println!("{:#?}", quote);
-                    tdx::verify_quote(&quote, certs_dir.as_deref())?;
+                    tdx::verify_quote(&quote, certs_dir.as_deref(), &opts)?;
                     println!("Verification successful!");
                 }
                 _ => {
@@ -137,6 +234,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse_hex(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
-    hex::decode(s)
+fn parse_min_tcb(s: &str) -> Result<(u8, u8, u8, u8), String> {
+    let parts: Vec<&str> = s.split(':').collect();
+    if parts.len() != 4 {
+        return Err("Expected format: bootloader:tee:snp:microcode (e.g., 3:0:8:209)".to_string());
+    }
+    let bootloader = parts[0]
+        .parse::<u8>()
+        .map_err(|_| "Invalid bootloader version")?;
+    let tee = parts[1].parse::<u8>().map_err(|_| "Invalid tee version")?;
+    let snp = parts[2].parse::<u8>().map_err(|_| "Invalid snp version")?;
+    let microcode = parts[3]
+        .parse::<u8>()
+        .map_err(|_| "Invalid microcode version")?;
+    Ok((bootloader, tee, snp, microcode))
 }

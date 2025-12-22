@@ -1,3 +1,4 @@
+use crate::VerifyOptions;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -7,7 +8,7 @@ pub fn parse_quote(bytes: &[u8]) -> Result<Quote> {
     Quote::from_bytes(bytes).map_err(|e| anyhow::anyhow!("Failed to parse TDX quote: {:?}", e))
 }
 
-pub fn verify_quote(quote: &Quote, certs_dir: Option<&Path>) -> Result<()> {
+pub fn verify_quote(quote: &Quote, certs_dir: Option<&Path>, opts: &VerifyOptions) -> Result<()> {
     let pck = if let Some(certs_dir) = certs_dir {
         verify_pck_from_dir(certs_dir)?
     } else if let Ok(pck_chain_pem) = quote.pck_cert_chain() {
@@ -25,6 +26,8 @@ pub fn verify_quote(quote: &Quote, certs_dir: Option<&Path>) -> Result<()> {
         .verify_with_pck(&pck)
         .map_err(|e| anyhow::anyhow!("Quote signature verification failed: {:?}", e))?;
     println!("Quote signature verified with PCK");
+
+    verify_attestation_content(quote, opts)?;
 
     Ok(())
 }
@@ -50,4 +53,133 @@ fn verify_pck_from_dir(certs_dir: &Path) -> Result<VerifyingKey> {
     );
 
     Ok(pck)
+}
+
+fn verify_attestation_content(quote: &Quote, opts: &VerifyOptions) -> Result<()> {
+    let body = &quote.body;
+
+    if let Some(expected_hex) = &opts.expected_measurement {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_measurement")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected MRTD must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if body.mrtd != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "MRTD mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(body.mrtd)
+            ));
+        }
+        println!("MRTD matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_nonce {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_nonce")?;
+        let expected_len = expected.len().min(64);
+        let mut expected_padded = [0u8; 64];
+        expected_padded[..expected_len].copy_from_slice(&expected[..expected_len]);
+
+        if body.reportdata != expected_padded {
+            return Err(anyhow::anyhow!(
+                "Report data (nonce) mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(expected_padded),
+                hex::encode(body.reportdata)
+            ));
+        }
+        println!("Report data contains expected nonce");
+    }
+
+    if let Some(expected_hex) = &opts.expected_rtmr0 {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_rtmr0")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected RTMR0 must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if body.rtmr0 != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "RTMR0 mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(body.rtmr0)
+            ));
+        }
+        println!("RTMR0 matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_rtmr1 {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_rtmr1")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected RTMR1 must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if body.rtmr1 != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "RTMR1 mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(body.rtmr1)
+            ));
+        }
+        println!("RTMR1 matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_rtmr2 {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_rtmr2")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected RTMR2 must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if body.rtmr2 != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "RTMR2 mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(body.rtmr2)
+            ));
+        }
+        println!("RTMR2 matches expected value");
+    }
+
+    if let Some(expected_hex) = &opts.expected_rtmr3 {
+        let expected =
+            hex::decode(expected_hex).context("Invalid hex string for expected_rtmr3")?;
+        if expected.len() != 48 {
+            return Err(anyhow::anyhow!(
+                "Expected RTMR3 must be 48 bytes, got {}",
+                expected.len()
+            ));
+        }
+        if body.rtmr3 != expected.as_slice() {
+            return Err(anyhow::anyhow!(
+                "RTMR3 mismatch\n  Expected: {}\n  Got:      {}",
+                hex::encode(&expected),
+                hex::encode(body.rtmr3)
+            ));
+        }
+        println!("RTMR3 matches expected value");
+    }
+
+    if opts.require_no_debug {
+        // TDX tdattributes bit 0 is the DEBUG flag
+        let debug_enabled = body.tdattributes[0] & 0x01 != 0;
+        if debug_enabled {
+            return Err(anyhow::anyhow!(
+                "TD debug mode is enabled but --require-no-debug was specified"
+            ));
+        }
+        println!("TD debug mode is disabled");
+    }
+
+    Ok(())
 }
