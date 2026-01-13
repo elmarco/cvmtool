@@ -47,47 +47,47 @@ enum Commands {
 
         /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
         #[arg(long)]
-        expected_report_data: Option<String>,
+        report_data: Option<String>,
 
         /// Expected launch measurement (hex string, 48 bytes for SEV/TDX MRTD)
         #[arg(long)]
-        expected_measurement: Option<String>,
+        measurement: Option<String>,
 
         /// Expected host data (hex string, 32 bytes, SEV only)
         #[arg(long)]
-        expected_host_data: Option<String>,
+        sev_host_data: Option<String>,
 
         /// Expected ID key digest (hex string, 48 bytes, SEV only)
         #[arg(long)]
-        expected_id_key_digest: Option<String>,
-
-        /// Expected RTMR0 value (hex string, 48 bytes, TDX only)
-        #[arg(long)]
-        expected_rtmr0: Option<String>,
-
-        /// Expected RTMR1 value (hex string, 48 bytes, TDX only)
-        #[arg(long)]
-        expected_rtmr1: Option<String>,
-
-        /// Expected RTMR2 value (hex string, 48 bytes, TDX only)
-        #[arg(long)]
-        expected_rtmr2: Option<String>,
-
-        /// Expected RTMR3 value (hex string, 48 bytes, TDX only)
-        #[arg(long)]
-        expected_rtmr3: Option<String>,
-
-        /// Require debug mode to be disabled
-        #[arg(long)]
-        require_no_debug: bool,
-
-        /// Require migration to be disabled (SEV only)
-        #[arg(long)]
-        require_no_migration: bool,
+        sev_id_key_digest: Option<String>,
 
         /// Minimum TCB versions as bootloader:tee:snp:microcode (e.g., "3:0:8:209", SEV only)
         #[arg(long, value_parser = parse_min_tcb)]
-        min_tcb: Option<(u8, u8, u8, u8)>,
+        sev_min_tcb: Option<(u8, u8, u8, u8)>,
+
+        /// Expected RTMR0 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        tdx_rtmr0: Option<String>,
+
+        /// Expected RTMR1 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        tdx_rtmr1: Option<String>,
+
+        /// Expected RTMR2 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        tdx_rtmr2: Option<String>,
+
+        /// Expected RTMR3 value (hex string, 48 bytes, TDX only)
+        #[arg(long)]
+        tdx_rtmr3: Option<String>,
+
+        /// Require debug mode to be disabled
+        #[arg(long)]
+        policy_no_debug: bool,
+
+        /// Require migration to be disabled (SEV only)
+        #[arg(long)]
+        policy_no_migration: bool,
     },
     /// Fetch PCK certificate from Intel PCS (for TDX hosts)
     FetchPck {
@@ -101,24 +101,24 @@ enum Commands {
 #[derive(Debug, Default, Clone)]
 pub struct VerifyOptions {
     /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
-    pub expected_report_data: Option<String>,
+    pub report_data: Option<String>,
     /// Expected launch measurement (hex string, SEV: 48 bytes, TDX MRTD: 48 bytes)
-    pub expected_measurement: Option<String>,
+    pub measurement: Option<String>,
     /// Expected host data (hex string, SEV only, 32 bytes)
-    pub expected_host_data: Option<String>,
+    pub sev_host_data: Option<String>,
     /// Expected ID key digest (hex string, SEV only, 48 bytes)
-    pub expected_id_key_digest: Option<String>,
-    /// Expected RTMR values (hex string, TDX only, 48 bytes each)
-    pub expected_rtmr0: Option<String>,
-    pub expected_rtmr1: Option<String>,
-    pub expected_rtmr2: Option<String>,
-    pub expected_rtmr3: Option<String>,
-    /// Require debug mode to be disabled
-    pub require_no_debug: bool,
-    /// Require migration to be disabled (SEV only)
-    pub require_no_migration: bool,
+    pub sev_id_key_digest: Option<String>,
     /// Minimum TCB versions (SEV only): (bootloader, tee, snp, microcode)
-    pub min_tcb: Option<(u8, u8, u8, u8)>,
+    pub sev_min_tcb: Option<(u8, u8, u8, u8)>,
+    /// Expected RTMR values (hex string, TDX only, 48 bytes each)
+    pub tdx_rtmr0: Option<String>,
+    pub tdx_rtmr1: Option<String>,
+    pub tdx_rtmr2: Option<String>,
+    pub tdx_rtmr3: Option<String>,
+    /// Require debug mode to be disabled
+    pub policy_no_debug: bool,
+    /// Require migration to be disabled (SEV only)
+    pub policy_no_migration: bool,
 }
 
 fn main() -> Result<()> {
@@ -165,17 +165,17 @@ fn main() -> Result<()> {
             path,
             format,
             certs_dir,
-            expected_report_data,
-            expected_measurement,
-            expected_host_data,
-            expected_id_key_digest,
-            expected_rtmr0,
-            expected_rtmr1,
-            expected_rtmr2,
-            expected_rtmr3,
-            require_no_debug,
-            require_no_migration,
-            min_tcb,
+            report_data,
+            measurement,
+            sev_host_data,
+            sev_id_key_digest,
+            sev_min_tcb,
+            tdx_rtmr0,
+            tdx_rtmr1,
+            tdx_rtmr2,
+            tdx_rtmr3,
+            policy_no_debug,
+            policy_no_migration,
         } => {
             let report_bytes = if path.to_str() == Some("-") {
                 let mut buf = Vec::new();
@@ -190,17 +190,17 @@ fn main() -> Result<()> {
             let format = format.ok_or_else(|| anyhow::anyhow!("The format must be specified"))?;
 
             let opts = VerifyOptions {
-                expected_report_data,
-                expected_measurement,
-                expected_host_data,
-                expected_id_key_digest,
-                expected_rtmr0,
-                expected_rtmr1,
-                expected_rtmr2,
-                expected_rtmr3,
-                require_no_debug,
-                require_no_migration,
-                min_tcb,
+                report_data,
+                measurement,
+                sev_host_data,
+                sev_id_key_digest,
+                sev_min_tcb,
+                tdx_rtmr0,
+                tdx_rtmr1,
+                tdx_rtmr2,
+                tdx_rtmr3,
+                policy_no_debug,
+                policy_no_migration,
             };
 
             match format.as_str() {

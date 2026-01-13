@@ -216,7 +216,7 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
 }
 
 fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) -> Result<()> {
-    if let Some(expected_hex) = &opts.expected_measurement {
+    if let Some(expected_hex) = &opts.measurement {
         let expected =
             hex::decode(expected_hex).context("Invalid hex string for expected_measurement")?;
         if expected.len() != 48 {
@@ -235,7 +235,7 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         println!("Measurement matches expected value");
     }
 
-    if let Some(expected_hex) = &opts.expected_report_data {
+    if let Some(expected_hex) = &opts.report_data {
         let expected = hex::decode(expected_hex).context("Invalid hex string for expected_data")?;
         let expected_len = expected.len().min(64);
         let mut expected_padded = [0u8; 64];
@@ -251,7 +251,7 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         println!("Report data matches expected");
     }
 
-    if let Some(expected_hex) = &opts.expected_host_data {
+    if let Some(expected_hex) = &opts.sev_host_data {
         let expected =
             hex::decode(expected_hex).context("Invalid hex string for expected_host_data")?;
         if expected.len() != 32 {
@@ -270,7 +270,7 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         println!("Host data matches expected value");
     }
 
-    if let Some(expected_hex) = &opts.expected_id_key_digest {
+    if let Some(expected_hex) = &opts.sev_id_key_digest {
         let expected =
             hex::decode(expected_hex).context("Invalid hex string for expected_id_key_digest")?;
         if expected.len() != 48 {
@@ -289,25 +289,25 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         println!("ID key digest matches expected value");
     }
 
-    if opts.require_no_debug && report.policy.debug_allowed() {
+    if opts.policy_no_debug && report.policy.debug_allowed() {
         return Err(anyhow::anyhow!(
             "Debug mode is enabled but --require-no-debug was specified"
         ));
     }
-    if opts.require_no_debug {
+    if opts.policy_no_debug {
         println!("Debug mode is disabled");
     }
 
-    if opts.require_no_migration && report.policy.migrate_ma_allowed() {
+    if opts.policy_no_migration && report.policy.migrate_ma_allowed() {
         return Err(anyhow::anyhow!(
             "Migration is allowed but --require-no-migration was specified"
         ));
     }
-    if opts.require_no_migration {
+    if opts.policy_no_migration {
         println!("Migration is disabled");
     }
 
-    if let Some((min_bootloader, min_tee, min_snp, min_microcode)) = opts.min_tcb {
+    if let Some((min_bootloader, min_tee, min_snp, min_microcode)) = opts.sev_min_tcb {
         if report.reported_tcb.bootloader < min_bootloader {
             return Err(anyhow::anyhow!(
                 "TCB bootloader version {} is below minimum {}",
