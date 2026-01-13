@@ -32,6 +32,16 @@ This will parse the binary report file and print its header and body details (e.
 
 It returns a success status code if the report is valid, or an error code if it is invalid.
 
+To verify a report acquired from a remote machine, chain together commands over ssh
+
+```bash
+ssh user@remote-vm cvmtool report - | cvmtool verify -f tdx -
+```
+
+NB, the remote VM must have been configured to accept a trusted SSH public key
+or other form of password-less credential. It is unsafe to respond to any remote
+interactive password prompt prior to successfully verifying the attestion report.
+
 ## Requirements
 
 This tool requires:

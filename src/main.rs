@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 mod pck;
@@ -33,7 +33,7 @@ enum Commands {
     },
     /// Verify a report
     Verify {
-        /// Path to the report file to verify
+        /// Path to the report file to verify ('-' for stdin)
         #[arg(value_name = "FILE")]
         path: PathBuf,
 
@@ -177,8 +177,15 @@ fn main() -> Result<()> {
             require_no_migration,
             min_tcb,
         } => {
-            let report_bytes = fs::read(&path)
-                .context(format!("Failed to read report file {}", path.display()))?;
+            let report_bytes = if path.to_str() == Some("-") {
+                let mut buf = Vec::new();
+                io::stdin()
+                    .read_to_end(&mut buf)
+                    .context("Failed to write report from stdin")?;
+                buf
+            } else {
+                fs::read(&path).context(format!("Failed to read report file {}", path.display()))?
+            };
 
             let format = format.ok_or_else(|| anyhow::anyhow!("The format must be specified"))?;
 
