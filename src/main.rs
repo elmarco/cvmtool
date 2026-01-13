@@ -11,6 +11,14 @@ mod tdx;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    /// Don't display any status messages, only error messages
+    #[arg(short, long)]
+    quiet: bool,
+
+    /// Display verbose information about operations
+    #[arg(short, long)]
+    verbose: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -100,6 +108,8 @@ enum Commands {
 /// Options for attestation verification beyond cryptographic checks
 #[derive(Debug, Default, Clone)]
 pub struct VerifyOptions {
+    /// Don't print messages
+    pub quiet: bool,
     /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
     pub report_data: Option<String>,
     /// Expected launch measurement (hex string, SEV: 48 bytes, TDX MRTD: 48 bytes)
@@ -155,10 +165,12 @@ fn main() -> Result<()> {
             } else {
                 fs::write(&path, &quote)
                     .context(format!("Failed to write report to {}", path.display()))?;
-                eprintln!(
-                    "Report successfully written to {} in binary format",
-                    path.display()
-                );
+                if !cli.quiet {
+                    println!(
+                        "Report successfully written to {} in binary format",
+                        path.display()
+                    )
+                }
             }
         }
         Commands::Verify {
@@ -190,6 +202,7 @@ fn main() -> Result<()> {
             let format = format.ok_or_else(|| anyhow::anyhow!("The format must be specified"))?;
 
             let opts = VerifyOptions {
+                quiet: cli.quiet,
                 report_data,
                 measurement,
                 sev_host_data,
@@ -206,17 +219,25 @@ fn main() -> Result<()> {
             match format.as_str() {
                 "sev" => {
                     let report = sev::parse_report(&report_bytes)?;
-                    println!("{:#?}", report);
+                    if cli.verbose {
+                        println!("{:#?}", report);
+                    }
                     if let Some(certs_dir) = certs_dir {
                         sev::verify_report(&report, &certs_dir, &opts)?;
-                        println!("Verification successful!");
+                        if !cli.quiet {
+                            println!("Verification successful!");
+                        }
                     }
                 }
                 "tdx" => {
                     let quote = tdx::parse_quote(&report_bytes)?;
-                    println!("{:#?}", quote);
+                    if cli.verbose {
+                        println!("{:#?}", quote);
+                    }
                     tdx::verify_quote(&quote, certs_dir.as_deref(), &opts)?;
-                    println!("Verification successful!");
+                    if !cli.quiet {
+                        println!("Verification successful!");
+                    }
                 }
                 _ => {
                     return Err(anyhow::anyhow!("Unsupported format: {}", format));
@@ -224,28 +245,38 @@ fn main() -> Result<()> {
             }
         }
         Commands::FetchPck { output } => {
-            eprintln!("Retrieving platform information...");
+            if cli.verbose {
+                println!("Retrieving platform information...");
+            }
             let platform_info = pck::get_platform_info()?;
-            eprintln!("Platform info retrieved:");
-            eprintln!(
-                "  PPID: {}...",
-                &platform_info.encrypted_ppid[..32.min(platform_info.encrypted_ppid.len())]
-            );
-            eprintln!("  PCE ID: {}", platform_info.pce_id);
-            eprintln!("  CPU SVN: {}", platform_info.cpu_svn);
-            eprintln!("  PCE SVN: {}", platform_info.pce_svn);
-            eprintln!("  QE ID: {}", platform_info.qe_id);
+            if cli.verbose {
+                println!("Platform info retrieved:");
+                println!(
+                    "  PPID: {}...",
+                    &platform_info.encrypted_ppid[..32.min(platform_info.encrypted_ppid.len())]
+                );
+                println!("  PCE ID: {}", platform_info.pce_id);
+                println!("  CPU SVN: {}", platform_info.cpu_svn);
+                println!("  PCE SVN: {}", platform_info.pce_svn);
+                println!("  QE ID: {}", platform_info.qe_id);
+            }
 
-            eprintln!("\nFetching PCK certificate from Intel PCS...");
+            if cli.verbose {
+                println!("\nFetching PCK certificate from Intel PCS...");
+            }
             let response = pck::fetch_pck_certificate(&platform_info)?;
-            eprintln!("Certificate retrieved:");
-            eprintln!("  FMSPC: {}", response.fmspc);
-            eprintln!("  TCBm: {}", response.tcbm);
-            eprintln!("  CA Type: {}", response.ca_type);
+            if cli.verbose {
+                println!("Certificate retrieved:");
+                println!("  FMSPC: {}", response.fmspc);
+                println!("  TCBm: {}", response.tcbm);
+                println!("  CA Type: {}", response.ca_type);
 
-            eprintln!("\nSaving certificates...");
-            pck::save_certificates(&response, &output)?;
-            eprintln!("\nDone!");
+                println!("\nSaving certificates...");
+            }
+            pck::save_certificates(&response, &output, cli.verbose)?;
+            if !cli.quiet {
+                println!("Saved certificates to {:?}", output);
+            }
         }
     }
 

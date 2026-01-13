@@ -1,6 +1,6 @@
 use crate::VerifyOptions;
 use anyhow::{Context, Result};
-use asn1_rs::{Oid, oid};
+use asn1_rs::{oid, Oid};
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
 use sev::certs::snp::{Certificate, Verifiable};
 use sev::firmware::guest::AttestationReport;
@@ -21,11 +21,11 @@ enum SnpOid {
 impl SnpOid {
     fn oid(&self) -> Oid<'static> {
         match self {
-            SnpOid::BootLoader => oid!(1.3.6.1.4.1.3704.1.3.1),
-            SnpOid::Tee => oid!(1.3.6.1.4.1.3704.1.3.2),
-            SnpOid::Snp => oid!(1.3.6.1.4.1.3704.1.3.3),
-            SnpOid::Ucode => oid!(1.3.6.1.4.1.3704.1.3.8),
-            SnpOid::HwId => oid!(1.3.6.1.4.1.3704.1.4),
+            SnpOid::BootLoader => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .1),
+            SnpOid::Tee => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .2),
+            SnpOid::Snp => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .3),
+            SnpOid::Ucode => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .8),
+            SnpOid::HwId => oid!(1.3.6 .1 .4 .1 .3704 .1 .4),
         }
     }
 }
@@ -51,17 +51,23 @@ pub fn verify_report(
     (&ark, &ark)
         .verify()
         .map_err(|e| anyhow::anyhow!("ARK is not self-signed: {:?}", e))?;
-    println!("ARK is self-signed");
+    if !opts.quiet {
+        println!("ARK is self-signed");
+    }
 
     (&ark, &ask)
         .verify()
         .map_err(|e| anyhow::anyhow!("ASK was not signed by ARK: {:?}", e))?;
-    println!("ASK was signed by ARK");
+    if !opts.quiet {
+        println!("ASK was signed by ARK");
+    }
 
     (&ask, &vcek)
         .verify()
         .map_err(|e| anyhow::anyhow!("VCEK was not signed by ASK: {:?}", e))?;
-    println!("VCEK was signed by ASK");
+    if !opts.quiet {
+        println!("VCEK was signed by ASK");
+    }
 
     let vcek_pubkey = vcek
         .public_key()
@@ -85,9 +91,11 @@ pub fn verify_report(
     {
         return Err(anyhow::anyhow!("VCEK did not sign the attestation report"));
     }
-    println!("VCEK signed the attestation report");
+    if !opts.quiet {
+        println!("VCEK signed the attestation report");
+    }
 
-    verify_tcb(&vcek, report)?;
+    verify_tcb(&vcek, report, opts)?;
 
     verify_attestation_content(report, opts)?;
 
@@ -153,7 +161,7 @@ fn check_cert_extension(extension: &X509Extension, expected: &[u8]) -> bool {
     }
 }
 
-fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
+fn verify_tcb(vcek: &Certificate, report: &AttestationReport, opts: &VerifyOptions) -> Result<()> {
     let vcek_der = vcek.to_der().context("Failed to convert VCEK to DER")?;
     let (_, vcek_x509) =
         X509Certificate::from_der(&vcek_der).context("Failed to parse VCEK as X509")?;
@@ -169,10 +177,12 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
                 report.reported_tcb.bootloader
             ));
         }
-        println!(
-            "TCB bootloader matches ({})",
-            report.reported_tcb.bootloader
-        );
+        if !opts.quiet {
+            println!(
+                "TCB bootloader matches ({})",
+                report.reported_tcb.bootloader
+            );
+        }
     }
 
     if let Some(ext) = extensions.get(&SnpOid::Tee.oid()) {
@@ -182,7 +192,9 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
                 report.reported_tcb.tee
             ));
         }
-        println!("TCB TEE matches ({})", report.reported_tcb.tee);
+        if !opts.quiet {
+            println!("TCB TEE matches ({})", report.reported_tcb.tee);
+        }
     }
 
     if let Some(ext) = extensions.get(&SnpOid::Snp.oid()) {
@@ -192,7 +204,9 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
                 report.reported_tcb.snp
             ));
         }
-        println!("TCB SNP matches ({})", report.reported_tcb.snp);
+        if !opts.quiet {
+            println!("TCB SNP matches ({})", report.reported_tcb.snp);
+        }
     }
 
     if let Some(ext) = extensions.get(&SnpOid::Ucode.oid()) {
@@ -202,14 +216,18 @@ fn verify_tcb(vcek: &Certificate, report: &AttestationReport) -> Result<()> {
                 report.reported_tcb.microcode
             ));
         }
-        println!("TCB microcode matches ({})", report.reported_tcb.microcode);
+        if !opts.quiet {
+            println!("TCB microcode matches ({})", report.reported_tcb.microcode);
+        }
     }
 
     if let Some(ext) = extensions.get(&SnpOid::HwId.oid()) {
         if !check_cert_extension(ext, &report.chip_id) {
             return Err(anyhow::anyhow!("Chip ID mismatch between report and VCEK"));
         }
-        println!("Chip ID matches");
+        if !opts.quiet {
+            println!("Chip ID matches");
+        }
     }
 
     Ok(())
@@ -232,7 +250,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
                 hex::encode(report.measurement)
             ));
         }
-        println!("Measurement matches expected value");
+        if !opts.quiet {
+            println!("Measurement matches expected value");
+        }
     }
 
     if let Some(expected_hex) = &opts.report_data {
@@ -248,7 +268,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
                 hex::encode(report.report_data)
             ));
         }
-        println!("Report data matches expected");
+        if !opts.quiet {
+            println!("Report data matches expected");
+        }
     }
 
     if let Some(expected_hex) = &opts.sev_host_data {
@@ -267,7 +289,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
                 hex::encode(report.host_data)
             ));
         }
-        println!("Host data matches expected value");
+        if !opts.quiet {
+            println!("Host data matches expected value");
+        }
     }
 
     if let Some(expected_hex) = &opts.sev_id_key_digest {
@@ -286,7 +310,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
                 hex::encode(report.id_key_digest)
             ));
         }
-        println!("ID key digest matches expected value");
+        if !opts.quiet {
+            println!("ID key digest matches expected value");
+        }
     }
 
     if opts.policy_no_debug && report.policy.debug_allowed() {
@@ -295,7 +321,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         ));
     }
     if opts.policy_no_debug {
-        println!("Debug mode is disabled");
+        if !opts.quiet {
+            println!("Debug mode is disabled");
+        }
     }
 
     if opts.policy_no_migration && report.policy.migrate_ma_allowed() {
@@ -304,7 +332,9 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
         ));
     }
     if opts.policy_no_migration {
-        println!("Migration is disabled");
+        if !opts.quiet {
+            println!("Migration is disabled");
+        }
     }
 
     if let Some((min_bootloader, min_tee, min_snp, min_microcode)) = opts.sev_min_tcb {
@@ -336,10 +366,12 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
                 min_microcode
             ));
         }
-        println!(
-            "TCB versions meet minimum requirements ({}:{}:{}:{})",
-            min_bootloader, min_tee, min_snp, min_microcode
-        );
+        if !opts.quiet {
+            println!(
+                "TCB versions meet minimum requirements ({}:{}:{}:{})",
+                min_bootloader, min_tee, min_snp, min_microcode
+            );
+        }
     }
 
     Ok(())

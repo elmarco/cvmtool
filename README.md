@@ -20,7 +20,7 @@ DIGEST=$(sha256sum cvm_report.json)
 cvmtool report --report-data $(DIGEST) cvm_report_with_digest.bin
 ```
 
-The output is the raw report in **binary format**. The output target is a file, a message indicating successful writing will be printed to stderr.
+The output is the raw report in **binary format**. The output target is a file, a message indicating successful writing will be printed to stdout.
 
 To view the binary report, you can use tools like `xxd` (e.g., `xxd cvm_report.bin`).
 
