@@ -12,7 +12,7 @@ mod verify {
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
@@ -28,7 +28,7 @@ mod verify {
             .stdout(predicate::str::contains(
                 "VCEK signed the attestation report",
             ))
-            .stdout(predicate::str::contains("Verification successful!"));
+            .stdout(predicate::str::contains("Verified SEV attestation report"));
     }
 
     #[test]
@@ -37,7 +37,7 @@ mod verify {
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
@@ -52,28 +52,23 @@ mod verify {
     }
 
     #[test]
-    fn with_unsupported_provider_fails() {
+    fn with_unsupported_format_fails() {
         let temp = TempDir::new().unwrap();
         let report_path = temp.path().join("report.bin");
         fs::write(&report_path, [0u8; 100]).unwrap();
 
         cvmtool()
-            .args(["-p", "unsupported_provider", "verify"])
+            .args(["verify", "-f", "unsupported_format"])
             .arg(&report_path)
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Unsupported provider"));
+            .stderr(predicate::str::contains("Unsupported format"));
     }
 
     #[test]
     fn nonexistent_file_fails() {
         cvmtool()
-            .args([
-                "-p",
-                "sev_guest",
-                "verify",
-                "/nonexistent/path/to/report.bin",
-            ])
+            .args(["verify", "-f", "sev", "/nonexistent/path/to/report.bin"])
             .assert()
             .failure()
             .stderr(predicate::str::contains("Failed to read report file"));
@@ -86,7 +81,7 @@ mod verify {
         fs::write(&report_path, [0u8; 100]).unwrap();
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(&report_path)
             .assert()
             .failure()
@@ -100,7 +95,7 @@ mod verify {
         fs::write(&quote_path, [0u8; 100]).unwrap();
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(&quote_path)
             .assert()
             .failure()
@@ -116,7 +111,7 @@ mod verify {
         fs::create_dir(&certs_dir).unwrap();
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(&certs_dir)
@@ -130,22 +125,17 @@ mod verify {
         let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
             .assert()
             .success()
-            .stdout(predicate::str::contains("version: 4"))
-            .stdout(predicate::str::contains("tee_type: TDX"))
-            .stdout(predicate::str::contains(
-                "attestation_key_type: ECDSA256WithP256",
-            ))
             .stdout(predicate::str::contains(
                 "Embedded PCK certificate chain verified",
             ))
             .stdout(predicate::str::contains(
                 "Quote signature verified with PCK",
             ))
-            .stdout(predicate::str::contains("Verification successful!"));
+            .stdout(predicate::str::contains("Verified TDX attestation report"));
     }
 
     #[test]
@@ -154,7 +144,7 @@ mod verify {
         let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
@@ -164,7 +154,7 @@ mod verify {
             .stdout(predicate::str::contains(
                 "Quote signature verified with PCK",
             ))
-            .stdout(predicate::str::contains("Verification successful!"));
+            .stdout(predicate::str::contains("Verified TDX attestation report"));
     }
 
     // Unlike SEV, the tdx-quote library embeds Intel's real root CA and always
@@ -176,7 +166,7 @@ mod verify {
         let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
@@ -196,7 +186,7 @@ mod verify {
         fs::create_dir(&certs_dir).unwrap();
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
             .args(["--certs-dir"])
             .arg(&certs_dir)
@@ -212,9 +202,9 @@ mod verify {
         let wrong_measurement = "0".repeat(96);
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
-            .args(["--expected-measurement", &wrong_measurement])
+            .args(["--measurement", &wrong_measurement])
             .assert()
             .failure()
             .stderr(predicate::str::contains("MRTD mismatch"));
@@ -227,12 +217,12 @@ mod verify {
         let wrong_nonce = "deadbeef";
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
-            .args(["--expected-nonce", wrong_nonce])
+            .args(["--report-data", wrong_nonce])
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Report data (nonce) mismatch"));
+            .stderr(predicate::str::contains("Report data mismatch"));
     }
 
     #[test]
@@ -240,9 +230,9 @@ mod verify {
         let quote_path = std::path::Path::new("tests/fixtures/tdx.report");
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
-            .args(["--require-no-debug"])
+            .args(["--policy-no-debug"])
             .assert()
             .success()
             .stdout(predicate::str::contains("TD debug mode is disabled"));
@@ -257,11 +247,11 @@ mod verify {
         let wrong_measurement = "0".repeat(96);
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
-            .args(["--expected-measurement", &wrong_measurement])
+            .args(["--measurement", &wrong_measurement])
             .assert()
             .failure()
             .stderr(predicate::str::contains("Measurement mismatch"));
@@ -273,11 +263,11 @@ mod verify {
         let report_path = std::path::Path::new("tests/fixtures/sev.report");
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
-            .args(["--require-no-debug"])
+            .args(["--policy-no-debug"])
             .assert()
             .success()
             .stdout(predicate::str::contains("Debug mode is disabled"));
@@ -290,11 +280,11 @@ mod verify {
 
         // Set minimum TCB versions very high - should fail
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
-            .args(["--min-tcb", "255:255:255:255"])
+            .args(["--sev-min-tcb", "255:255:255:255"])
             .assert()
             .failure()
             .stderr(predicate::str::contains("is below minimum"));
@@ -308,11 +298,11 @@ mod verify {
         let measurement = "80422fe2dc2aa605d20ae4d74eaca02930281d59646a819cf8f11d9842d1c48f48df72439bcdf389cbe71ffa754ab3dc";
 
         cvmtool()
-            .args(["-p", "sev_guest", "verify"])
+            .args(["verify", "-f", "sev"])
             .arg(report_path)
             .args(["--certs-dir"])
             .arg(certs_dir)
-            .args(["--expected-measurement", measurement])
+            .args(["--measurement", measurement])
             .assert()
             .success()
             .stdout(predicate::str::contains(
@@ -327,9 +317,9 @@ mod verify {
         let mrtd = "d2567292906f19471ed375e2c1f8eb836a719ceb3a8756b9ad21db01552ff0f9ac8e194dccb65a3dbda4c7ee2c4ded9f";
 
         cvmtool()
-            .args(["-p", "tdx_guest", "verify"])
+            .args(["verify", "-f", "tdx"])
             .arg(quote_path)
-            .args(["--expected-measurement", mrtd])
+            .args(["--measurement", mrtd])
             .assert()
             .success()
             .stdout(predicate::str::contains("MRTD matches expected value"));

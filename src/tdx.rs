@@ -2,7 +2,7 @@ use crate::VerifyOptions;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
-use tdx_quote::{pck, Quote, VerifyingKey};
+use tdx_quote::{Quote, VerifyingKey, pck};
 
 pub fn parse_quote(bytes: &[u8]) -> Result<Quote> {
     Quote::from_bytes(bytes).map_err(|e| anyhow::anyhow!("Failed to parse TDX quote: {:?}", e))

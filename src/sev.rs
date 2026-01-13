@@ -1,6 +1,6 @@
 use crate::VerifyOptions;
 use anyhow::{Context, Result};
-use asn1_rs::{oid, Oid};
+use asn1_rs::{Oid, oid};
 use openssl::{ecdsa::EcdsaSig, sha::Sha384};
 use sev::certs::snp::{Certificate, Verifiable};
 use sev::firmware::guest::AttestationReport;
@@ -21,11 +21,11 @@ enum SnpOid {
 impl SnpOid {
     fn oid(&self) -> Oid<'static> {
         match self {
-            SnpOid::BootLoader => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .1),
-            SnpOid::Tee => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .2),
-            SnpOid::Snp => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .3),
-            SnpOid::Ucode => oid!(1.3.6 .1 .4 .1 .3704 .1 .3 .8),
-            SnpOid::HwId => oid!(1.3.6 .1 .4 .1 .3704 .1 .4),
+            SnpOid::BootLoader => oid!(1.3.6.1.4.1.3704.1.3.1),
+            SnpOid::Tee => oid!(1.3.6.1.4.1.3704.1.3.2),
+            SnpOid::Snp => oid!(1.3.6.1.4.1.3704.1.3.3),
+            SnpOid::Ucode => oid!(1.3.6.1.4.1.3704.1.3.8),
+            SnpOid::HwId => oid!(1.3.6.1.4.1.3704.1.4),
         }
     }
 }
@@ -320,10 +320,8 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
             "Debug mode is enabled but --require-no-debug was specified"
         ));
     }
-    if opts.policy_no_debug {
-        if !opts.quiet {
-            println!("Debug mode is disabled");
-        }
+    if opts.policy_no_debug && !opts.quiet {
+        println!("Debug mode is disabled");
     }
 
     if opts.policy_no_migration && report.policy.migrate_ma_allowed() {
@@ -331,10 +329,8 @@ fn verify_attestation_content(report: &AttestationReport, opts: &VerifyOptions) 
             "Migration is allowed but --require-no-migration was specified"
         ));
     }
-    if opts.policy_no_migration {
-        if !opts.quiet {
-            println!("Migration is disabled");
-        }
+    if opts.policy_no_migration && !opts.quiet {
+        println!("Migration is disabled");
     }
 
     if let Some((min_bootloader, min_tee, min_snp, min_microcode)) = opts.sev_min_tcb {
