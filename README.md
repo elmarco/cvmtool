@@ -10,13 +10,13 @@ To generate a TSM report/quote, use the `report` subcommand. You can optionally 
 
 ```bash
 # Generate report, print to stdout (with zero-nonce)
-cvmtool report
+cvmtool report -
 
 # Generate report with a nonce and write to a file
-cvmtool report --nonce 0102030405060708 --output cvm_report_with_nonce.bin
+cvmtool report --nonce 0102030405060708 cvm_report_with_nonce.bin
 ```
 
-The output is the raw report in **binary format**. When `--output` is used, a message indicating successful writing will be printed to stderr.
+The output is the raw report in **binary format**. The output target is a file, a message indicating successful writing will be printed to stderr.
 
 To view the binary report, you can use tools like `xxd` (e.g., `xxd cvm_report.bin`).
 

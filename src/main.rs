@@ -19,6 +19,10 @@ struct Cli {
 enum Commands {
     /// Generate a report/quote
     Report {
+        /// Path to the report file to create ('-' for stdout)
+        #[arg(value_name = "FILE")]
+        path: PathBuf,
+
         /// The report format ('sev', 'tdx')
         #[arg(short, long)]
         format: Option<String>,
@@ -26,10 +30,6 @@ enum Commands {
         /// Nonce (hex string). Will be padded with zeros or truncated to 64 bytes.
         #[arg(long)]
         nonce: Option<String>,
-
-        /// Output file path. If not specified, the report is printed to stdout.
-        #[arg(short, long)]
-        output: Option<PathBuf>,
     },
     /// Verify a report
     Verify {
@@ -126,9 +126,9 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Report {
+            path,
             format,
             nonce,
-            output,
         } => {
             let mut input = [0u8; 64];
             if let Some(n) = nonce {
@@ -148,17 +148,17 @@ fn main() -> Result<()> {
             };
             let quote = quote.map_err(|e| anyhow::anyhow!("Quote generation failed: {:?}", e))?;
 
-            if let Some(path) = output {
+            if path.to_str() == Some("-") {
+                io::stdout()
+                    .write_all(&quote)
+                    .context("Failed to write report to stdout")?;
+            } else {
                 fs::write(&path, &quote)
                     .context(format!("Failed to write report to {}", path.display()))?;
                 eprintln!(
                     "Report successfully written to {} in binary format",
                     path.display()
                 );
-            } else {
-                io::stdout()
-                    .write_all(&quote)
-                    .context("Failed to write report to stdout")?;
             }
         }
         Commands::Verify {
