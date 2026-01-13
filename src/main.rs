@@ -25,7 +25,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Generate a report/quote
+    /// Generate a report
     Report {
         /// Path to the report file to create ('-' for stdout)
         #[arg(value_name = "FILE")]
