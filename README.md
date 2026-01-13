@@ -25,7 +25,7 @@ To view the binary report, you can use tools like `xxd` (e.g., `xxd cvm_report.b
 To verify (parse and inspect) a report, use the `verify` subcommand with the path to the report file.
 
 ```bash
-cvmtool -p sev_guest verify cvm_report.bin --certs-dir certs/
+cvmtool verify -f sev cvm_report.bin --certs-dir certs/
 ```
 
 This will parse the binary report file and print its header and body details (e.g., version, TEE type, RTMRs, Report Data).

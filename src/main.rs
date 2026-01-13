@@ -11,10 +11,6 @@ mod tdx;
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Specify the provider
-    #[arg(short, long)]
-    provider: Option<String>,
-
     #[command(subcommand)]
     command: Commands,
 }
@@ -23,6 +19,10 @@ struct Cli {
 enum Commands {
     /// Generate a report/quote
     Report {
+        /// The report format ('sev', 'tdx')
+        #[arg(short, long)]
+        format: Option<String>,
+
         /// Nonce (hex string). Will be padded with zeros or truncated to 64 bytes.
         #[arg(long)]
         nonce: Option<String>,
@@ -36,6 +36,10 @@ enum Commands {
         /// Path to the report file to verify
         #[arg(value_name = "FILE")]
         path: PathBuf,
+
+        /// The report format ('sev', 'tdx')
+        #[arg(short, long)]
+        format: Option<String>,
 
         /// Path to directory containing certificate chain
         #[arg(short, long, value_name = "DIR")]
@@ -119,10 +123,13 @@ pub struct VerifyOptions {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let provider = cli.provider;
 
     match cli.command {
-        Commands::Report { nonce, output } => {
+        Commands::Report {
+            format,
+            nonce,
+            output,
+        } => {
             let mut input = [0u8; 64];
             if let Some(n) = nonce {
                 let n = hex::decode(&n).context("Invalid hex string for nonce")?;
@@ -130,8 +137,12 @@ fn main() -> Result<()> {
                 input[..len].copy_from_slice(&n[..len]);
             }
 
-            let quote = if let Some(provider) = provider {
-                configfs_tsm::create_quote_with_providers(input, vec![&provider])
+            let quote = if let Some(format) = format {
+                match format.as_str() {
+                    "sev" => configfs_tsm::create_quote_with_providers(input, vec![&"sev-guest"]),
+                    "tdx" => configfs_tsm::create_quote_with_providers(input, vec![&"tdx-guest"]),
+                    _ => Err(anyhow::anyhow!("Unsupported report format: {}", format))?,
+                }
             } else {
                 configfs_tsm::create_quote(input)
             };
@@ -152,6 +163,7 @@ fn main() -> Result<()> {
         }
         Commands::Verify {
             path,
+            format,
             certs_dir,
             expected_nonce,
             expected_measurement,
@@ -168,8 +180,7 @@ fn main() -> Result<()> {
             let report_bytes = fs::read(&path)
                 .context(format!("Failed to read report file {}", path.display()))?;
 
-            let provider =
-                provider.ok_or_else(|| anyhow::anyhow!("The provider must be specified"))?;
+            let format = format.ok_or_else(|| anyhow::anyhow!("The format must be specified"))?;
 
             let opts = VerifyOptions {
                 expected_nonce,
@@ -185,8 +196,8 @@ fn main() -> Result<()> {
                 min_tcb,
             };
 
-            match provider.as_str() {
-                "sev_guest" => {
+            match format.as_str() {
+                "sev" => {
                     let report = sev::parse_report(&report_bytes)?;
                     println!("{:#?}", report);
                     if let Some(certs_dir) = certs_dir {
@@ -194,14 +205,14 @@ fn main() -> Result<()> {
                         println!("Verification successful!");
                     }
                 }
-                "tdx_guest" => {
+                "tdx" => {
                     let quote = tdx::parse_quote(&report_bytes)?;
                     println!("{:#?}", quote);
                     tdx::verify_quote(&quote, certs_dir.as_deref(), &opts)?;
                     println!("Verification successful!");
                 }
                 _ => {
-                    return Err(anyhow::anyhow!("Unsupported provider: {}", provider));
+                    return Err(anyhow::anyhow!("Unsupported format: {}", format));
                 }
             }
         }
