@@ -77,21 +77,20 @@ fn verify_attestation_content(quote: &Quote, opts: &VerifyOptions) -> Result<()>
         println!("MRTD matches expected value");
     }
 
-    if let Some(expected_hex) = &opts.expected_nonce {
-        let expected =
-            hex::decode(expected_hex).context("Invalid hex string for expected_nonce")?;
+    if let Some(expected_hex) = &opts.expected_report_data {
+        let expected = hex::decode(expected_hex).context("Invalid hex string for expected_data")?;
         let expected_len = expected.len().min(64);
         let mut expected_padded = [0u8; 64];
         expected_padded[..expected_len].copy_from_slice(&expected[..expected_len]);
 
         if body.reportdata != expected_padded {
             return Err(anyhow::anyhow!(
-                "Report data (nonce) mismatch\n  Expected: {}\n  Got:      {}",
+                "Report data mismatch\n  Expected: {}\n  Got:      {}",
                 hex::encode(expected_padded),
                 hex::encode(body.reportdata)
             ));
         }
-        println!("Report data contains expected nonce");
+        println!("Report data matches expected");
     }
 
     if let Some(expected_hex) = &opts.expected_rtmr0 {

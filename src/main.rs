@@ -27,9 +27,9 @@ enum Commands {
         #[arg(short, long)]
         format: Option<String>,
 
-        /// Nonce (hex string). Will be padded with zeros or truncated to 64 bytes.
+        /// Report data (hex string). Will be padded with zeros or truncated to 64 bytes.
         #[arg(long)]
-        nonce: Option<String>,
+        report_data: Option<String>,
     },
     /// Verify a report
     Verify {
@@ -45,9 +45,9 @@ enum Commands {
         #[arg(short, long, value_name = "DIR")]
         certs_dir: Option<PathBuf>,
 
-        /// Expected nonce in report_data (hex string, up to 64 bytes)
+        /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
         #[arg(long)]
-        expected_nonce: Option<String>,
+        expected_report_data: Option<String>,
 
         /// Expected launch measurement (hex string, 48 bytes for SEV/TDX MRTD)
         #[arg(long)]
@@ -100,8 +100,8 @@ enum Commands {
 /// Options for attestation verification beyond cryptographic checks
 #[derive(Debug, Default, Clone)]
 pub struct VerifyOptions {
-    /// Expected nonce in report_data (hex string, up to 64 bytes)
-    pub expected_nonce: Option<String>,
+    /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
+    pub expected_report_data: Option<String>,
     /// Expected launch measurement (hex string, SEV: 48 bytes, TDX MRTD: 48 bytes)
     pub expected_measurement: Option<String>,
     /// Expected host data (hex string, SEV only, 32 bytes)
@@ -128,11 +128,11 @@ fn main() -> Result<()> {
         Commands::Report {
             path,
             format,
-            nonce,
+            report_data,
         } => {
             let mut input = [0u8; 64];
-            if let Some(n) = nonce {
-                let n = hex::decode(&n).context("Invalid hex string for nonce")?;
+            if let Some(n) = report_data {
+                let n = hex::decode(&n).context("Invalid hex string for report data")?;
                 let len = n.len().min(64);
                 input[..len].copy_from_slice(&n[..len]);
             }
@@ -165,7 +165,7 @@ fn main() -> Result<()> {
             path,
             format,
             certs_dir,
-            expected_nonce,
+            expected_report_data,
             expected_measurement,
             expected_host_data,
             expected_id_key_digest,
@@ -190,7 +190,7 @@ fn main() -> Result<()> {
             let format = format.ok_or_else(|| anyhow::anyhow!("The format must be specified"))?;
 
             let opts = VerifyOptions {
-                expected_nonce,
+                expected_report_data,
                 expected_measurement,
                 expected_host_data,
                 expected_id_key_digest,
