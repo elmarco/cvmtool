@@ -69,9 +69,7 @@ feature-depth = 1
 #db-urls = ["https://github.com/rustsec/advisory-db"]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
-ignore = [
-    { id = "RUSTSEC-2023-0071", reason = "rsa timing side-channel via tdx-quote dependency, no fix available yet" },
-]
+ignore = []
 # If this is true, then cargo deny will use the git executable to fetch advisory database.
 # If this is false, then it uses a built-in git library.
 # Setting this to true can be helpful if you have special authentication requirements that cargo-deny does not support.
@@ -90,11 +88,12 @@ allow = [
     "MIT",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
     "Unicode-3.0",
     "MPL-2.0",
+    "OpenSSL",
+    "CDLA-Permissive-2.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
