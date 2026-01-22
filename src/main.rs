@@ -117,6 +117,8 @@ enum Commands {
 /// Options for attestation verification beyond cryptographic checks
 #[derive(Debug, Default, Clone)]
 pub struct VerifyOptions {
+    /// Verbose output
+    pub verbose: bool,
     /// Don't print messages
     pub quiet: bool,
     /// Expected report data (hex string). Will be padded with zeros or truncated to 64 bytes.
@@ -202,6 +204,7 @@ fn main() -> Result<()> {
             };
 
             let opts = VerifyOptions {
+                verbose: cli.verbose,
                 quiet: cli.quiet,
                 report_data,
                 measurement,
@@ -216,51 +219,7 @@ fn main() -> Result<()> {
                 policy_no_migration,
             };
 
-            if format.is_none() || format == Some("sev".to_string()) {
-                match sev::parse_report(&report_bytes) {
-                    Ok(report) => {
-                        if cli.verbose {
-                            println!("{:#?}", report);
-                        }
-                        if let Some(certs_dir) = certs_dir {
-                            sev::verify_report(&report, &certs_dir, &opts)?;
-                            if !cli.quiet {
-                                println!("Verified SEV attestation report");
-                            }
-                        }
-                        return Ok(());
-                    }
-
-                    Err(err) => {
-                        if format.is_some() {
-                            return Err(err);
-                        }
-                    }
-                }
-            }
-            if format.is_none() || format == Some("tdx".to_string()) {
-                match tdx::parse_quote(&report_bytes) {
-                    Ok(quote) => {
-                        if cli.verbose {
-                            println!("{:#?}", quote);
-                        }
-                        tdx::verify_quote(&quote, certs_dir.as_deref(), &opts)?;
-                        if !cli.quiet {
-                            println!("Verified TDX attestation report");
-                        }
-                        return Ok(());
-                    }
-                    Err(err) => {
-                        if format.is_some() {
-                            return Err(err);
-                        }
-                    }
-                }
-            }
-            match format {
-                Some(format) => return Err(anyhow::anyhow!("Unsupported format: {}", format)),
-                None => return Err(anyhow::anyhow!("Unable to detect report format")),
-            }
+            verify(format, certs_dir, report_bytes, opts)?;
         }
         Commands::FetchPck { certs_dir } => {
             if cli.verbose {
@@ -333,6 +292,62 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn verify(
+    format: Option<String>,
+    certs_dir: Option<PathBuf>,
+    report_bytes: Vec<u8>,
+    opts: VerifyOptions,
+) -> Result<()> {
+    if format.is_none() || format == Some("sev".to_string()) {
+        match sev::parse_report(&report_bytes) {
+            Ok(report) => {
+                if opts.verbose {
+                    println!("{:#?}", report);
+                }
+                let certs_dir = certs_dir.ok_or_else(|| {
+                    anyhow::anyhow!("Certificates directory not provided")
+                })?;
+                sev::verify_report(&report, &certs_dir, &opts)?;
+                if !opts.quiet {
+                    println!("Verified SEV attestation report");
+                }
+                return Ok(());
+            }
+
+            Err(err) => {
+                if format.is_some() {
+                    return Err(err);
+                }
+            }
+        }
+    }
+    if format.is_none() || format == Some("tdx".to_string()) {
+        match tdx::parse_quote(&report_bytes) {
+            Ok(quote) => {
+                if opts.verbose {
+                    println!("{:#?}", quote);
+                }
+                tdx::verify_quote(&quote, certs_dir.as_deref(), &opts)?;
+                if !opts.quiet {
+                    println!("Verified TDX attestation report");
+                }
+                return Ok(());
+            }
+            Err(err) => {
+                if format.is_some() {
+                    return Err(err);
+                }
+            }
+        }
+    }
+
+    if let Some(format) = format {
+        bail!("Unsupported format: {format}")
+    }
+
+    bail!("Unable to detect report format")
 }
 
 fn report(format: Option<&str>, input: [u8; 64]) -> Result<Vec<u8>> {
