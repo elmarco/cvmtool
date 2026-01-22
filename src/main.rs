@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result, bail};
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::io::{self, Read, Write};
@@ -9,6 +9,7 @@ use std::path::PathBuf;
 mod pck;
 mod sev;
 mod tdx;
+mod vcek;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -105,6 +106,12 @@ enum Commands {
         #[arg(short, long, default_value = ".")]
         certs_dir: PathBuf,
     },
+    /// Fetch VCEK and CA certificates from AMD KDS (for SEV-SNP)
+    FetchVcek {
+        /// Output directory for certificates
+        #[arg(short, long, default_value = ".")]
+        certs_dir: PathBuf,
+    },
 }
 
 /// Options for attestation verification beyond cryptographic checks
@@ -152,23 +159,13 @@ fn main() -> Result<()> {
                 None => rand::fill(&mut input[..]), // Randomly generate the report data.
             }
 
-            let quote = if let Some(format) = format {
-                match format.as_str() {
-                    "sev" => configfs_tsm::create_quote_with_providers(input, vec![&"sev-guest"]),
-                    "tdx" => configfs_tsm::create_quote_with_providers(input, vec![&"tdx-guest"]),
-                    _ => Err(anyhow::anyhow!("Unsupported report format: {}", format))?,
-                }
-            } else {
-                configfs_tsm::create_quote(input)
-            };
-            let quote = quote.map_err(|e| anyhow::anyhow!("Quote generation failed: {:?}", e))?;
-
+            let report = report(format.as_deref(), input).context("Failed to get report")?;
             if path.to_str() == Some("-") {
                 io::stdout()
-                    .write_all(&quote)
+                    .write_all(&report)
                     .context("Failed to write report to stdout")?;
             } else {
-                fs::write(&path, &quote)
+                fs::write(&path, &report)
                     .context(format!("Failed to write report to {}", path.display()))?;
                 if !cli.quiet {
                     println!(
@@ -198,7 +195,7 @@ fn main() -> Result<()> {
                 let mut buf = Vec::new();
                 io::stdin()
                     .read_to_end(&mut buf)
-                    .context("Failed to write report from stdin")?;
+                    .context("Failed to read report from stdin")?;
                 buf
             } else {
                 fs::read(&path).context(format!("Failed to read report file {}", path.display()))?
@@ -299,9 +296,57 @@ fn main() -> Result<()> {
                 println!("Saved certificates to {:?}", certs_dir);
             }
         }
+        Commands::FetchVcek { certs_dir } => {
+            if cli.verbose {
+                println!("Generating SEV attestation report...");
+            }
+
+            let report = report(Some("sev"), [0; 64])?;
+            let report = sev::parse_report(&report)?;
+
+            let processor = vcek::get_processor_model(&report)?;
+            if cli.verbose {
+                println!("Detected processor: {processor}");
+            }
+
+            if cli.verbose {
+                println!("Fetching VCEK certificate from AMD KDS...");
+            }
+            let vcek_der = vcek::fetch_vcek_certificate(&report, &processor)?;
+            if cli.verbose {
+                println!("VCEK certificate retrieved ({} bytes)", vcek_der.len());
+            }
+
+            if cli.verbose {
+                println!("Fetching CA chain (ARK + ASK) from AMD KDS...");
+            }
+            let chain = vcek::fetch_ca_chain(&processor)?;
+            if cli.verbose {
+                println!("CA chain retrieved");
+            }
+
+            vcek::save_certificates(&vcek_der, &chain, &certs_dir, cli.verbose)?;
+            if !cli.quiet {
+                println!("Saved certificates to {:?}", certs_dir);
+            }
+        }
     }
 
     Ok(())
+}
+
+fn report(format: Option<&str>, input: [u8; 64]) -> Result<Vec<u8>> {
+    let report = if let Some(format) = format {
+        match format {
+            "sev" => configfs_tsm::create_quote_with_providers(input, vec![&"sev-guest"]),
+            "tdx" => configfs_tsm::create_quote_with_providers(input, vec![&"tdx-guest"]),
+            _ => bail!("Unsupported format: {format}"),
+        }
+    } else {
+        configfs_tsm::create_quote(input)
+    };
+
+    report.map_err(Error::msg)
 }
 
 fn parse_min_tcb(s: &str) -> Result<(u8, u8, u8, u8), String> {

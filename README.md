@@ -59,6 +59,7 @@ certificate(s) are as follows:
     ask.{der, pem}
     vcek.{der, pem}
 ```
+The `fetch-vcek` subcommand can be used to fetch these certificates from AMD's Key Distribution Service (KDS).
 - Intel TDX: Provisioning Certification Key (PCK), PCK Issuer Chain\*.
 ```
 {certs-dir} \
@@ -68,6 +69,18 @@ certificate(s) are as follows:
 
 \* User-provided TDX certificate chains are optional. If the certificate chain is not provided, it will be fetched from the TDX quote (if available).
 The `fetch-pck` subcommand can be used to fetch the certificate chain from the Intel Provisioning Certification Service.
+
+### Fetch Certificates
+
+To fetch the required certificates for verification, use the appropriate fetch subcommand from within the CVM:
+
+```bash
+# Fetch VCEK and CA chain from AMD KDS (for SEV-SNP)
+cvmtool fetch-vcek --certs-dir certs/
+
+# Fetch PCK certificate from Intel PCS (for TDX)
+cvmtool fetch-pck --certs-dir certs/
+```
 
 ## Requirements
 
