@@ -6,6 +6,8 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+#[cfg(feature = "azure")]
+mod azure;
 mod pck;
 mod sev;
 mod tdx;
@@ -351,6 +353,29 @@ fn verify(
 }
 
 fn report(format: Option<&str>, input: [u8; 64]) -> Result<Vec<u8>> {
+    #[cfg(feature = "azure")]
+    if azure::get_isolation_type().is_some() {
+        // TODO add input data in NV 0x01400002
+        let report = azure::read_report()?;
+        match report.isolation_type {
+            azure::IsolationType::Snp => {
+                if format == Some("tdx") {
+                    return Err(anyhow::anyhow!(
+                        "Requested TDX format but Azure vTPM contains SNP report"
+                    ));
+                }
+            }
+            azure::IsolationType::Tdx => {
+                if format == Some("sev") {
+                    return Err(anyhow::anyhow!(
+                        "Requested SEV format but Azure vTPM contains TDX report"
+                    ));
+                }
+            }
+        }
+        return Ok(report.hw_report);
+    }
+
     let report = if let Some(format) = format {
         match format {
             "sev" => configfs_tsm::create_quote_with_providers(input, vec![&"sev-guest"]),

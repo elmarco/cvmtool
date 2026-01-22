@@ -1,6 +1,6 @@
 # CVM Tool
 
-A CLI tool to generate Confidential VM (CVM) reports/quotes using Linux TSM and verify them.
+A CLI tool to generate Confidential VM (CVM) reports/quotes and verify them. Supports Linux TSM (configfs) and Azure vTPM.
 
 ## Usage
 
@@ -82,9 +82,28 @@ cvmtool fetch-vcek --certs-dir certs/
 cvmtool fetch-pck --certs-dir certs/
 ```
 
+## Azure CVM Support
+
+When built with the `azure` feature, cvmtool can retrieve attestation reports from Azure Confidential VMs via the vTPM (Virtual TPM). This works on Azure CVMs using either SNP or TDX isolation.
+
+```bash
+# Build with Azure support
+cargo build --features azure
+
+# The tool automatically detects Azure environment and uses vTPM
+cvmtool report cvm_report.bin
+```
+
+Azure detection is automatic via CPUID - if running in a Hyper-V isolated CVM, the tool reads the HCL attestation report from the vTPM NV index. Otherwise, it falls back to the standard configfs TSM interface.
+
 ## Requirements
 
-This tool requires:
-- A Linux environment with `configfs` enabled.
-- The `tsm` (Trusted Security Module) subsystem enabled in the kernel.
-- Running inside a supported Confidential VM (e.g., Intel TDX, AMD SEV-SNP) that exposes the TSM interface via configfs.
+**Standard (configfs TSM):**
+- A Linux environment with `configfs` enabled
+- The `tsm` (Trusted Security Module) subsystem enabled in the kernel
+- Running inside a supported Confidential VM (e.g., Intel TDX, AMD SEV-SNP) that exposes the TSM interface via configfs
+
+**Azure (`--features azure`):**
+- Running inside an Azure Confidential VM (SNP or TDX isolation)
+- Access to the vTPM device (`/dev/tpm0`)
+- The `tss-esapi` library and its dependencies (tpm2-tss)
